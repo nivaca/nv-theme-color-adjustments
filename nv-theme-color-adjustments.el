@@ -46,17 +46,23 @@
   :group 'faces
   :prefix "nv-theme-")
 
-(defcustom nv-theme-color-adjustment-method 'absolute
-  "How a percentage is converted into a lightness change.
+(defcustom nv-theme-color-adjustment-method 'scale
+  "How a percentage is converted into a color change.
 
-`absolute' shifts HSL lightness by PERCENT/100 in absolute terms, so
-4 always means \"+0.04 lightness\".  This behaves the same way on light
-and dark themes and can lighten pure black.
+`scale' multiplies each RGB channel, so darkening by 8 multiplies every
+channel by 0.92.  Lightening is the mirror operation, moving each
+channel the given fraction of the way to full intensity.  This is what
+image editors call shade and tint, and it is what you get by darkening
+a theme file by hand.
 
-`relative' scales lightness by PERCENT, as `color-lighten-name' does.
-This is the historical behaviour: it has almost no effect on dark
-colors and cannot lighten pure black at all."
-  :type '(choice (const :tag "Absolute lightness shift" absolute)
+`absolute' shifts HSL lightness by PERCENT/100 in absolute terms, so 4
+always means \"+0.04 lightness\".
+
+`relative' scales HSL lightness by PERCENT, as `color-lighten-name'
+does.  It has almost no effect on dark colors and cannot lighten pure
+black at all."
+  :type '(choice (const :tag "Multiply RGB channels" scale)
+                 (const :tag "Absolute lightness shift" absolute)
                  (const :tag "Relative to current lightness" relative))
   :group 'nv-theme-color-adjustments)
 
@@ -106,6 +112,43 @@ colors to the terminal palette, which would corrupt them."
   "Return non-nil if VALUE is a usable explicit color."
   (and (nv-theme--color-to-rgb value) t))
 
+(defun nv-theme--scale-rgb (rgb amount)
+  "Scale RGB by AMOUNT percent.
+
+A negative AMOUNT multiplies every channel by 1+AMOUNT/100, so -8 gives
+the familiar \"92% of each channel\" darkening.  A positive AMOUNT is the
+mirror of that, moving each channel AMOUNT percent of the remaining
+distance to full intensity."
+  (let ((factor (/ amount 100.0)))
+    (mapcar (lambda (channel)
+              (color-clamp
+               (if (>= amount 0)
+                   (+ channel (* (- 1.0 channel) factor))
+                 (* channel (+ 1.0 factor)))))
+            rgb)))
+
+(defun nv-theme--shift-hsl (rgb amount)
+  "Shift the HSL lightness of RGB by AMOUNT percent."
+  (let* ((hsl (apply #'color-rgb-to-hsl rgb))
+         (h (nth 0 hsl))
+         (s (nth 1 hsl))
+         (l (nth 2 hsl)))
+    (color-hsl-to-rgb
+     h s (color-clamp
+          (if (eq nv-theme-color-adjustment-method 'relative)
+              (+ l (* l (/ amount 100.0)))
+            (+ l (/ amount 100.0)))))))
+
+(defun nv-theme--rgb-to-hex (rgb)
+  "Return RGB, a list of floats, as a \"#rrggbb\" string.
+
+`color-rgb-to-hex' is not used here because it formats its arguments
+with %x, which truncates rather than rounds, losing up to one unit per
+channel."
+  (apply #'format "#%02x%02x%02x"
+         (mapcar (lambda (channel) (round (* 255 (color-clamp channel))))
+                 rgb)))
+
 (defun nv-theme--adjust-color (color amount)
   "Adjust COLOR by AMOUNT percent.
 Positive AMOUNT lightens; negative AMOUNT darkens.
@@ -113,18 +156,10 @@ Return COLOR unchanged if it cannot be parsed."
   (let ((rgb (nv-theme--color-to-rgb color)))
     (if (null rgb)
         color
-      (let* ((hsl (apply #'color-rgb-to-hsl rgb))
-             (h (nth 0 hsl))
-             (s (nth 1 hsl))
-             (l (nth 2 hsl))
-             (new-l (color-clamp
-                     (if (eq nv-theme-color-adjustment-method 'relative)
-                         (+ l (* l (/ amount 100.0)))
-                       (+ l (/ amount 100.0))))))
-        (apply #'color-rgb-to-hex
-               (append (color-hsl-to-rgb h s new-l) (list 2)))))))
-
-
+      (nv-theme--rgb-to-hex
+       (if (eq nv-theme-color-adjustment-method 'scale)
+           (nv-theme--scale-rgb rgb amount)
+         (nv-theme--shift-hsl rgb amount))))))
 
 ;;; Attribute traversal
 
