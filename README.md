@@ -73,7 +73,7 @@ If the package is in a Git repository, a `straight.el` recipe can be combined di
 ```elisp
 (use-package nv-theme-color-adjustments
   :straight (:type git
-             :repo "https://github.com/USERNAME/nv-theme-color-adjustments.git")
+             :repo "https://github.com/nivaca/nv-theme-color-adjustments.git")
   :demand t)
 ```
 
@@ -88,7 +88,7 @@ For example, if you load your `nivaca-leuven` theme and then want to make it sli
 ```elisp
 (use-package nv-theme-color-adjustments
   :straight (:type git
-             :repo "https://github.com/USERNAME/nv-theme-color-adjustments.git")
+             :repo "https://github.com/nivaca/nv-theme-color-adjustments.git")
   :demand t)
 
 (load-theme 'nivaca-leuven t)
@@ -100,7 +100,7 @@ You can also bind keys for quick adjustments:
 ```elisp
 (use-package nv-theme-color-adjustments
   :straight (:type git
-             :repo "https://github.com/USERNAME/nv-theme-color-adjustments.git")
+             :repo "https://github.com/nivaca/nv-theme-color-adjustments.git")
   :demand t
   :bind (("C-c t +" . nv-lighten-theme)
          ("C-c t -" . nv-darken-theme)
@@ -152,7 +152,7 @@ git commit -m "Initial release"
 Then create an empty repository on your preferred Git hosting service and add it as the remote:
 
 ```sh
-git remote add origin https://github.com/USERNAME/nv-theme-color-adjustments.git
+git remote add origin https://github.com/nivaca/nv-theme-color-adjustments.git
 git branch -M main
 git push -u origin main
 ```
