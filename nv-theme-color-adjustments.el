@@ -5,7 +5,7 @@
 ;; Author: Nicolas Vaughan
 ;; Maintainer: Nicolas Vaughan
 ;; URL: https://github.com/nivaca/nv-theme-color-adjustments
-;; Version: 0.2.0
+;; Version: 1.1
 ;; Package-Requires: ((emacs "26.1"))
 ;; Keywords: faces, themes
 
@@ -24,6 +24,8 @@
 
 ;;; Commentary:
 
+;; nv-theme-color-adjustments v.1.1
+;;
 ;; Runtime theme color adjustment.
 ;;
 ;;   (nv-lighten-theme 4)      ; make current theme 4% lighter
@@ -37,6 +39,7 @@
 ;;; Code:
 
 (require 'color)
+(require 'pcase)
 
 (defgroup nv-theme-color-adjustments nil
   "Runtime lightness adjustments for the current theme."
@@ -114,6 +117,34 @@ Return COLOR unchanged if it cannot be parsed."
                (append (color-hsl-to-rgb h s new-l) (list 2)))))))
 
 
+
+;;; Attribute traversal
+
+(defconst nv-theme--color-attributes
+  '(:foreground :background :distant-foreground
+    :underline :overline :strike-through :box)
+  "Face attributes that can carry a color.
+
+`:foreground', `:background' and `:distant-foreground' hold a color
+directly.  `:underline', `:overline', `:strike-through' and `:box' may
+hold a color string, or a plist with a `:color' member, or a value such
+as t that carries no color of its own.")
+
+(defun nv-theme--map-color (value fn)
+  "Return VALUE with every color inside it replaced by (FN COLOR).
+
+Return nil if VALUE contains no color, which is the case for
+`unspecified', for t, and for a `:box' given only as a line width."
+  (cond
+   ((nv-theme--color-attribute-p value)
+    (funcall fn value))
+   ((and (consp value) (keywordp (car value)))
+    (let ((color (plist-get value :color)))
+      (when (nv-theme--color-attribute-p color)
+        (plist-put (copy-sequence value) :color (funcall fn color)))))
+   (t nil)))
+
+
 ;;; Baseline management
 
 (defun nv-theme--stale-baseline-p ()
@@ -121,8 +152,17 @@ Return COLOR unchanged if it cannot be parsed."
   (and nv-theme-original-colors
        (not (equal nv-theme--baseline-themes custom-enabled-themes))))
 
+(defun nv-theme--face-colors (face)
+  "Return an alist of FACE's explicit color-bearing attributes."
+  (delq nil
+        (mapcar (lambda (attr)
+                  (let ((value (face-attribute face attr nil nil)))
+                    (when (nv-theme--map-color value #'identity)
+                      (cons attr value))))
+                nv-theme--color-attributes)))
+
 (defun nv-theme--save-original-colors ()
-  "Save the current explicit foreground and background colors.
+  "Save the current explicit colors of every face.
 
 The baseline is discarded and rebuilt when the set of enabled themes
 has changed.  Faces that were created after the baseline was taken are
@@ -135,25 +175,18 @@ lazily are adjusted too."
     (setq nv-theme--baseline-themes (copy-sequence custom-enabled-themes)))
   (dolist (face (face-list))
     (unless (assq face nv-theme-original-colors)
-      (push (list face
-                  (face-attribute face :foreground nil nil)
-                  (face-attribute face :background nil nil))
+      (push (cons face (nv-theme--face-colors face))
             nv-theme-original-colors))))
 
 (defun nv-theme--apply-adjustment ()
   "Apply `nv-theme-color-adjustment' to all recorded faces."
-  (dolist (entry nv-theme-original-colors)
-    (let ((face (nth 0 entry))
-          (foreground (nth 1 entry))
-          (background (nth 2 entry)))
-      (when (nv-theme--color-attribute-p foreground)
-        (set-face-attribute
-         face nil :foreground
-         (nv-theme--adjust-color foreground nv-theme-color-adjustment)))
-      (when (nv-theme--color-attribute-p background)
-        (set-face-attribute
-         face nil :background
-         (nv-theme--adjust-color background nv-theme-color-adjustment))))))
+  (pcase-dolist (`(,face . ,attributes) nv-theme-original-colors)
+    (pcase-dolist (`(,attr . ,value) attributes)
+      (set-face-attribute
+       face nil attr
+       (nv-theme--map-color
+        value (lambda (color)
+                (nv-theme--adjust-color color nv-theme-color-adjustment)))))))
 
 
 ;;; Commands
@@ -189,14 +222,9 @@ For example:
   (interactive)
   (if (null nv-theme-original-colors)
       (message "No saved theme colors to restore")
-    (dolist (entry nv-theme-original-colors)
-      (let ((face (nth 0 entry))
-            (foreground (nth 1 entry))
-            (background (nth 2 entry)))
-        (when (nv-theme--color-attribute-p foreground)
-          (set-face-attribute face nil :foreground foreground))
-        (when (nv-theme--color-attribute-p background)
-          (set-face-attribute face nil :background background))))
+    (pcase-dolist (`(,face . ,attributes) nv-theme-original-colors)
+      (pcase-dolist (`(,attr . ,value) attributes)
+        (set-face-attribute face nil attr value)))
     (setq nv-theme-original-colors nil
           nv-theme--baseline-themes nil
           nv-theme-color-adjustment 0)

@@ -1,5 +1,7 @@
 # nv-theme-color-adjustments
 
+**v.1.1**
+
 Adjust the colors of the currently displayed Emacs theme **at runtime**, without modifying the theme file or any persistent Emacs settings.
 
 The package is deliberately small and is intended to work with any Emacs theme whose colors are represented by ordinary face foreground/background attributes.
@@ -10,6 +12,7 @@ The package is deliberately small and is intended to work with any Emacs theme w
 - `nv-darken-theme` makes the current theme darker immediately.
 - Adjustments are cumulative and are always recomputed from the saved original colors.
 - `nv-reset-theme-colors` restores the colors that were present before the first adjustment.
+- Colors in `:box`, `:underline`, `:overline` and `:strike-through` are adjusted along with foregrounds and backgrounds.
 - Faces created after the first adjustment, for example by lazily loaded packages, are picked up automatically.
 - Switching or reloading a theme discards the saved baseline, so adjustments never carry colors from one theme into another.
 - No theme file is modified.
@@ -67,6 +70,31 @@ produces a net adjustment of 2% darker relative to the saved original colors.
 
 Each color is converted to HSL, its lightness component is changed, and the result is converted back. Only faces that set a color explicitly are touched; faces that inherit their colors follow along on their own.
 
+### Which attributes are adjusted
+
+A face can carry a color in more places than its foreground and background. All of the following are adjusted:
+
+| Attribute | Forms recognised |
+|-----------|------------------|
+| `:foreground` | a color |
+| `:background` | a color |
+| `:distant-foreground` | a color |
+| `:underline` | a color, or a plist with a `:color` member |
+| `:overline` | a color, or a plist with a `:color` member |
+| `:strike-through` | a color, or a plist with a `:color` member |
+| `:box` | a color, or a plist with a `:color` member |
+
+This matters in practice. Leuven-derived themes, for example, draw the mode line and header line with a colored `:box`, and mark spelling and syntax errors with a colored wavy `:underline`:
+
+```elisp
+(mode-line     (:box (:line-width 1 :color "#1A2F54") :foreground "#85CEEB" :background "#335EA8"))
+(flycheck-error (:underline (:color "#FE251E" :style wave) :weight bold :background "#FFE1E1"))
+```
+
+If only `:foreground` and `:background` were adjusted, those borders and underlines would keep their original colors while everything around them changed. At `(nv-darken-theme 100)` they would be the only colored things left on an otherwise black frame.
+
+Values that carry no color of their own are left alone, so `:underline t` continues to follow the foreground and `:box 2` keeps its line width.
+
 ### What a percentage means
 
 By default, a percentage is an **absolute** shift of HSL lightness: `4` always means "add 0.04 to lightness", regardless of the starting color. This behaves consistently on light and dark themes, and it can lighten pure black.
@@ -95,7 +123,9 @@ Faces that did not exist when the baseline was taken are added to it the first t
 
 Hexadecimal color specifications are parsed directly rather than through `color-values`, so the package behaves correctly on text terminals, where `color-values` would otherwise snap colors to the terminal palette before they were adjusted. Named colors on a terminal are still subject to that quantisation.
 
-## Important limitation
+## Important limitations
+
+Only face attributes are adjusted. A few colors live in frame parameters rather than in faces, notably `mouse-color`, `border-color` and the scroll bar colors, and those are left untouched. The cursor is a face and is adjusted normally.
 
 The adjustments affect the **currently displayed faces**, not the theme definition itself. Consequently, if you reload or switch themes, Emacs replaces the adjusted face attributes. This is intentional: the package provides temporary runtime adjustments rather than a way to edit theme files.
 
@@ -174,7 +204,7 @@ You can also bind keys for quick adjustments:
 | `nv-reset-theme-colors` | command | Restore the saved original colors and clear the baseline. |
 | `nv-theme-color-adjustment-method` | option | `absolute` (default) or `relative`. |
 | `nv-theme-color-adjustment` | variable | Current cumulative adjustment, in percent. |
-| `nv-theme-original-colors` | variable | Saved baseline, as `(FACE FOREGROUND BACKGROUND)` entries. |
+| `nv-theme-original-colors` | variable | Saved baseline, as `(FACE . ((ATTRIBUTE . VALUE) ...))` entries. |
 
 ## Package structure
 
@@ -211,7 +241,7 @@ After that, `straight.el` can install it directly from the repository.
 
 ## Requirements
 
-Emacs 26.1 or later. No dependencies beyond the built-in `color` library.
+This is version v.1.1. It requires Emacs 26.1 or later, and has no dependencies beyond the built-in `color` library.
 
 ## License
 
