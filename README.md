@@ -8,11 +8,12 @@ The package is deliberately small and is intended to work with any Emacs theme w
 
 - `nv-lighten-theme` makes the current theme lighter immediately.
 - `nv-darken-theme` makes the current theme darker immediately.
-- Adjustments are cumulative.
+- Adjustments are cumulative and are always recomputed from the saved original colors.
 - `nv-reset-theme-colors` restores the colors that were present before the first adjustment.
+- Faces created after the first adjustment, for example by lazily loaded packages, are picked up automatically.
+- Switching or reloading a theme discards the saved baseline, so adjustments never carry colors from one theme into another.
 - No theme file is modified.
 - No Custom settings are changed.
-- Reloading a theme naturally replaces the temporary runtime adjustments.
 
 ## Usage
 
@@ -51,6 +52,53 @@ The same functions are interactive, so they can also be invoked with `M-x`:
 - `M-x nv-darken-theme`
 - `M-x nv-reset-theme-colors`
 
+## How it works
+
+Before the first adjustment, the package records the current explicit foreground and background colors of all faces. Every subsequent adjustment is recalculated from those recorded originals rather than from the already modified colors, so repeated adjustments do not accumulate rounding errors.
+
+For example:
+
+```elisp
+(nv-darken-theme 4)
+(nv-lighten-theme 2)
+```
+
+produces a net adjustment of 2% darker relative to the saved original colors.
+
+Each color is converted to HSL, its lightness component is changed, and the result is converted back. Only faces that set a color explicitly are touched; faces that inherit their colors follow along on their own.
+
+### What a percentage means
+
+By default, a percentage is an **absolute** shift of HSL lightness: `4` always means "add 0.04 to lightness", regardless of the starting color. This behaves consistently on light and dark themes, and it can lighten pure black.
+
+If you prefer the older behaviour, set:
+
+```elisp
+(setq nv-theme-color-adjustment-method 'relative)
+```
+
+With `relative`, lightness is scaled rather than shifted, the same way `color-lighten-name` works: the new lightness is `L + L × percent/100`. Be aware that this makes the same percentage mean very different things at different points in the range, and that it cannot lighten pure black at all:
+
+| Color     | Lightness | `+4` absolute | `+4` relative |
+|-----------|-----------|---------------|---------------|
+| `#000000` | 0.000     | `#0a0a0a`     | `#000000`     |
+| `#1c1e1f` | 0.116     | `#252829`     | `#1d1f20`     |
+| `#fdf6e3` | 0.941     | `#fefcf6`     | `#fefbf4`     |
+
+### Baseline handling
+
+The recorded originals are the baseline for all subsequent adjustments. The baseline is rebuilt automatically when the set of enabled themes changes, and it is discarded by `nv-reset-theme-colors`. This means you can load a theme, adjust it, load a different theme, and adjust again without the first theme's colors leaking into the second.
+
+Faces that did not exist when the baseline was taken are added to it the first time they are seen, so packages that define their faces lazily are adjusted on the next call rather than being left out.
+
+## Terminal frames
+
+Hexadecimal color specifications are parsed directly rather than through `color-values`, so the package behaves correctly on text terminals, where `color-values` would otherwise snap colors to the terminal palette before they were adjusted. Named colors on a terminal are still subject to that quantisation.
+
+## Important limitation
+
+The adjustments affect the **currently displayed faces**, not the theme definition itself. Consequently, if you reload or switch themes, Emacs replaces the adjusted face attributes. This is intentional: the package provides temporary runtime adjustments rather than a way to edit theme files.
+
 ## use-package
 
 `use-package` does not install packages by itself; it configures packages that are already available to Emacs. This package can be used with `use-package` in several ways.
@@ -72,14 +120,20 @@ If the package is in a Git repository, a `straight.el` recipe can be combined di
 
 ```elisp
 (use-package nv-theme-color-adjustments
-  :straight (:type git
-             :repo "https://github.com/nivaca/nv-theme-color-adjustments.git")
+  :straight (nv-theme-color-adjustments
+             :type git
+             :host github
+             :repo "nivaca/nv-theme-color-adjustments")
   :demand t)
 ```
 
-Replace the repository URL with your actual GitHub, Codeberg, or other Git repository.
+Replace the host and repository with your own. For a host that straight.el does not know about, give the full clone URL instead:
 
-If the repository is public and you use a conventional straight recipe, you can also use the shorter form appropriate to your repository host.
+```elisp
+:straight (nv-theme-color-adjustments
+           :type git
+           :repo "https://codeberg.org/nivaca/nv-theme-color-adjustments.git")
+```
 
 ## Example configuration
 
@@ -87,8 +141,10 @@ For example, if you load your `nivaca-leuven` theme and then want to make it sli
 
 ```elisp
 (use-package nv-theme-color-adjustments
-  :straight (:type git
-             :repo "https://github.com/nivaca/nv-theme-color-adjustments.git")
+  :straight (nv-theme-color-adjustments
+             :type git
+             :host github
+             :repo "nivaca/nv-theme-color-adjustments")
   :demand t)
 
 (load-theme 'nivaca-leuven t)
@@ -99,32 +155,26 @@ You can also bind keys for quick adjustments:
 
 ```elisp
 (use-package nv-theme-color-adjustments
-  :straight (:type git
-             :repo "https://github.com/nivaca/nv-theme-color-adjustments.git")
+  :straight (nv-theme-color-adjustments
+             :type git
+             :host github
+             :repo "nivaca/nv-theme-color-adjustments")
   :demand t
   :bind (("C-c t +" . nv-lighten-theme)
          ("C-c t -" . nv-darken-theme)
          ("C-c t 0" . nv-reset-theme-colors)))
 ```
 
-## How it works
+## Commands and variables
 
-Before the first adjustment, the package records the current explicit foreground and background colors of all faces. Each subsequent adjustment is calculated from those original colors, using Emacs's `color-lighten-name` function.
-
-This means that repeated adjustments do not accumulate rounding errors from repeatedly changing an already modified color.
-
-For example:
-
-```elisp
-(nv-darken-theme 4)
-(nv-lighten-theme 2)
-```
-
-produces a net adjustment of 2% darker relative to the saved original colors.
-
-## Important limitation
-
-The adjustments affect the **currently displayed faces**, not the theme definition itself. Consequently, if you reload or switch themes, Emacs may replace the adjusted face attributes. This is intentional: the package provides temporary runtime adjustments rather than a way to edit theme files.
+| Name | Type | Description |
+|------|------|-------------|
+| `nv-lighten-theme` | command | Lighten the current theme by a percentage. |
+| `nv-darken-theme` | command | Darken the current theme by a percentage. |
+| `nv-reset-theme-colors` | command | Restore the saved original colors and clear the baseline. |
+| `nv-theme-color-adjustment-method` | option | `absolute` (default) or `relative`. |
+| `nv-theme-color-adjustment` | variable | Current cumulative adjustment, in percent. |
+| `nv-theme-original-colors` | variable | Saved baseline, as `(FACE FOREGROUND BACKGROUND)` entries. |
 
 ## Package structure
 
@@ -158,6 +208,10 @@ git push -u origin main
 ```
 
 After that, `straight.el` can install it directly from the repository.
+
+## Requirements
+
+Emacs 26.1 or later. No dependencies beyond the built-in `color` library.
 
 ## License
 
