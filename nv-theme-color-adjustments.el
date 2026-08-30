@@ -64,9 +64,17 @@ colors and cannot lighten pure black at all."
   "Original face colors saved before the first runtime adjustment.
 Each element has the form (FACE FOREGROUND BACKGROUND).")
 
+(defconst nv-theme-color-adjustment-limit 100
+  "Largest adjustment, in percent, that has any effect.
+At 100 every color reaches white, and at -100 every color reaches
+black, so the cumulative adjustment is clamped to this range.  Without
+the clamp the counter could drift far past the point where it still
+described what was on screen.")
+
 (defvar nv-theme-color-adjustment 0
   "Current cumulative runtime adjustment, in percent.
-Positive values mean lighter; negative values mean darker.")
+Positive values mean lighter; negative values mean darker.
+See `nv-set-theme-adjustment' to set this directly.")
 
 (defvar nv-theme--baseline-themes nil
   "Value of `custom-enabled-themes' when the baseline colors were saved.")
@@ -191,19 +199,43 @@ lazily are adjusted too."
 
 ;;; Commands
 
+(defun nv-theme--set-adjustment (percent)
+  "Display the theme at a total adjustment of PERCENT and report it."
+  (nv-theme--save-original-colors)
+  (setq nv-theme-color-adjustment
+        (max (- nv-theme-color-adjustment-limit)
+             (min nv-theme-color-adjustment-limit percent)))
+  (nv-theme--apply-adjustment)
+  (message "Theme brightness adjustment: %+g%%" nv-theme-color-adjustment))
+
+;;;###autoload
+(defun nv-set-theme-adjustment (percent)
+  "Set the total theme adjustment to PERCENT.
+
+Unlike `nv-lighten-theme' and `nv-darken-theme', this replaces the
+current adjustment instead of adding to it, so the result does not
+depend on what was applied earlier.  Use it when you want a specific
+end state rather than a relative nudge:
+
+  (nv-set-theme-adjustment -100)  ; everything black
+  (nv-set-theme-adjustment 0)     ; original colors"
+  (interactive "nSet total theme adjustment to (%): ")
+  (nv-theme--set-adjustment percent))
+
 ;;;###autoload
 (defun nv-lighten-theme (percent)
   "Lighten the currently displayed theme by PERCENT.
-The change happens immediately and is cumulative.
+The change happens immediately and is cumulative: PERCENT is added to
+`nv-theme-color-adjustment', which starts at 0 and is clamped to
+`nv-theme-color-adjustment-limit'.
 
 For example:
   (nv-lighten-theme 4)   ; 4% lighter
-  (nv-lighten-theme -4)  ; 4% darker"
+  (nv-lighten-theme -4)  ; 4% darker
+
+To set the total rather than adjust it, use `nv-set-theme-adjustment'."
   (interactive "nLighten theme by (%): ")
-  (nv-theme--save-original-colors)
-  (setq nv-theme-color-adjustment (+ nv-theme-color-adjustment percent))
-  (nv-theme--apply-adjustment)
-  (message "Theme brightness adjustment: %+g%%" nv-theme-color-adjustment))
+  (nv-theme--set-adjustment (+ nv-theme-color-adjustment percent)))
 
 ;;;###autoload
 (defun nv-darken-theme (percent)
@@ -212,7 +244,9 @@ The change happens immediately and is cumulative.
 
 For example:
   (nv-darken-theme 4)    ; 4% darker
-  (nv-darken-theme -4)   ; 4% lighter"
+  (nv-darken-theme -4)   ; 4% lighter
+
+To set the total rather than adjust it, use `nv-set-theme-adjustment'."
   (interactive "nDarken theme by (%): ")
   (nv-lighten-theme (- percent)))
 

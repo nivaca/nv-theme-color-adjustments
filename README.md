@@ -43,6 +43,18 @@ The adjustments are cumulative. For example:
 
 leaves the theme 2% lighter than its original state.
 
+Because they are cumulative, the result of a call depends on what came before. To set the total directly instead, ignoring any earlier adjustment, use `nv-set-theme-adjustment`:
+
+```elisp
+(nv-set-theme-adjustment -100)  ; everything black
+(nv-set-theme-adjustment 40)    ; 40% lighter than the original, whatever is current
+(nv-set-theme-adjustment 0)     ; original colors
+```
+
+This is usually what you want when you have been experimenting. `(nv-darken-theme 100)` does not mean "go to black"; it means "subtract 100 from the current adjustment", which lands on black only if you started at 0. The current total is shown in the echo area after every call and is held in `nv-theme-color-adjustment`.
+
+The total is clamped to the range -100 to 100, since -100 already reaches black and 100 already reaches white. This keeps the counter from drifting to a value that no longer describes what is on screen.
+
 To restore the original colors:
 
 ```elisp
@@ -53,6 +65,7 @@ The same functions are interactive, so they can also be invoked with `M-x`:
 
 - `M-x nv-lighten-theme`
 - `M-x nv-darken-theme`
+- `M-x nv-set-theme-adjustment`
 - `M-x nv-reset-theme-colors`
 
 ## How it works
@@ -195,15 +208,29 @@ You can also bind keys for quick adjustments:
          ("C-c t 0" . nv-reset-theme-colors)))
 ```
 
+## Updating an installed copy
+
+`straight.el` builds into `~/.emacs.d/straight/build/`, and Emacs loads the built copy. Editing the source repository does not change what is loaded. After changing the package, run:
+
+    M-x straight-rebuild-package RET nv-theme-color-adjustments RET
+
+and restart Emacs. To confirm which file is actually in memory:
+
+```elisp
+(locate-library "nv-theme-color-adjustments")
+```
+
 ## Commands and variables
 
 | Name | Type | Description |
 |------|------|-------------|
 | `nv-lighten-theme` | command | Lighten the current theme by a percentage. |
 | `nv-darken-theme` | command | Darken the current theme by a percentage. |
+| `nv-set-theme-adjustment` | command | Set the total adjustment, replacing rather than adding. |
 | `nv-reset-theme-colors` | command | Restore the saved original colors and clear the baseline. |
 | `nv-theme-color-adjustment-method` | option | `absolute` (default) or `relative`. |
 | `nv-theme-color-adjustment` | variable | Current cumulative adjustment, in percent. |
+| `nv-theme-color-adjustment-limit` | constant | Bound on the cumulative adjustment (100). |
 | `nv-theme-original-colors` | variable | Saved baseline, as `(FACE . ((ATTRIBUTE . VALUE) ...))` entries. |
 
 ## Package structure
